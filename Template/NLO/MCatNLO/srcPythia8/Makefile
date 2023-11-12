@@ -16,7 +16,8 @@ LIBDIRARCH=lib/archive
 
 # Libraries to include if GZIP support is enabled
 ifeq (x$(ENABLEGZIP),xyes)
-LIBGZIP=-L$(BOOSTLIBLOCATION) -lboost_iostreams -L$(ZLIBLOCATION) -lz
+#LIBGZIP=-L$(BOOSTLIBLOCATION) -lboost_iostreams -L$(ZLIBLOCATION) -lz
+LIBGZIP=-L$(ZLIBLOCATION) -lz
 endif
 
 %.o: ./PY8Analyzer/%.f
@@ -51,6 +52,11 @@ Pythia82: $(FORFILE) $(PYTHIA8LOCATION)/$(LIBDIR)/libpythia8.a
 	  -L$(PYTHIA8LOCATION)/$(LIBDIR) -lpythia8 $(LIBGZIP) \
 	  -lHepMCfio $(LIBGFORTRAN) $(HEPMCINCLIB) $(EXTRAPATHS) $(EXTRALIBS) \
 
+Pythia83: $(FORFILE) $(PYTHIA8LOCATION)/$(LIBDIR)/libpythia8.a
+	  $(CXX) $(CXXFLAGS) -I$(PYTHIA8LOCATION)/$(INCDIR) \
+	  -I$(TOPDIR)/$(INCDIR) $(INCLOPTION) $@.cc -o Pythia8.exe $(FORFILE) \
+	  -L$(PYTHIA8LOCATION)/$(LIBDIR) -lpythia8 $(LIBGZIP) \
+	  -lHepMCfio $(LIBGFORTRAN) $(HEPMCINCLIB) $(EXTRAPATHS) $(EXTRALIBS) \
 
 .PHONY: clean
 clean:

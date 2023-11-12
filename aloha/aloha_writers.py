@@ -210,18 +210,20 @@ class WriteALOHA:
         # couplings
         if  couplings is None:
             detected_couplings = [name for type, name in self.declaration if name.startswith('COUP')]
-            detected_couplings.sort(key=lambda x: x[4:])
+            detected_couplings.sort(key=lambda x: int(x[4:]) if x[4:] else 0)
             if detected_couplings:
                 couplings = detected_couplings
             else:
                 couplings = ['COUP']
                 
-        for coup in couplings:       
+        for coup in couplings:   
             call_arg.append(('complex', coup))              
             self.declaration.add(('complex',coup))
             
         if self.offshell:
-            if aloha.complex_mass:
+            if 'P1N' in self.tag:
+                pass
+            elif aloha.complex_mass:
                 call_arg.append(('complex','M%s' % self.outgoing))              
                 self.declaration.add(('complex','M%s' % self.outgoing))
             else:
@@ -578,7 +580,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         #return '%s\n    call %s(%s)' % \
         #    (self.get_header_txt(new_name, couplings), self.name, ','.join(arguments))
         couplings = [name for type, name in self.declaration if name.startswith('COUP') ]
-        couplings.sort()
+        couplings.sort(key=lambda x: int(x[4:]) if x[4:] else 0)
         for elem in self.routine.symmetries:
             new_name = self.name.rsplit('_',1)[0] + '_%s' % elem
             out.write('%s\n' % self.get_header_txt(new_name, couplings).replace('subroutine','entry'))
@@ -590,7 +592,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         """Define the Header of the fortran file. This include
             - momentum conservation
             - definition of the impulsion"""
-                    
+                        
         out = StringIO()
         
         # Define all the required momenta
@@ -612,11 +614,15 @@ class ALOHAWriterForFortran(WriteALOHA):
                 
             if self.declaration.is_used('P%s' % (i+1)):
                 self.get_one_momenta_def(i+1, out)
-                
+        
         # define the resulting momenta
-        if self.offshell:
-            
-            
+        bypass = False
+        if 'P1N' in self.tag:
+            if  not self.declaration.is_used('P%s' % (self.outgoing)):
+                bypass = True
+
+        if self.offshell and not bypass:
+
             energy_pos = out_size -2
             type = self.particles[self.outgoing-1]
             
@@ -631,7 +637,7 @@ class ALOHAWriterForFortran(WriteALOHA):
                 for i in range(1,4):
                     P = "P%s" % (self.outgoing)
                     value = ["1d-30", "0d0", "1d-15"]
-                    out.write("  IF (DABS(%(P)s(0))*1e-10.gt.DABS(%(P)s(%(i)s))) %(P)s(%(i)s)=%(val)s\n"
+                    out.write("  IF (ABS(%(P)s(0))*1e-10.gt.ABS(%(P)s(%(i)s))) %(P)s(%(i)s)=%(val)s\n"
                               % {"P": P, "i":i, 'val':value[i-1]})
             i = self.outgoing -1
             if self.declaration.is_used('Tnorm%s' % (i+1)):
@@ -787,12 +793,14 @@ class ALOHAWriterForFortran(WriteALOHA):
         
 
         numerator = self.routine.expr
+
         if not 'Coup(1)' in self.routine.infostr:
             coup_name = 'COUP'
         else:
             coup_name = '%s' % self.change_number_format(1)
+
         
-        
+        misc.sprint(self.name, coup_name, cond="VVS11_14P1N" in self.name)
         if not self.offshell:
             if coup_name == 'COUP':
                 formatted = self.write_obj(numerator.get_rep([0]))
@@ -816,23 +824,29 @@ class ALOHAWriterForFortran(WriteALOHA):
                 coeff = 'denom*'    
                 if not aloha.complex_mass:
                     if self.routine.denominator:
-                        out.write('    denom = %(COUP)s/(%(denom)s)\n' % {'COUP': coup_name,\
+                        if 'P1N' not in self.tag:
+                            out.write('    denom = %(COUP)s/(%(denom)s)\n' % {'COUP': coup_name,\
                                 'denom':self.write_obj(self.routine.denominator)}) 
                     else:
                         out.write('    denom = %(COUP)s/(P%(i)s(0)**2-P%(i)s(1)**2-P%(i)s(2)**2-P%(i)s(3)**2 - M%(i)s * (M%(i)s -CI* W%(i)s))\n' % \
                                   {'i': self.outgoing, 'COUP': coup_name})
                 else:
                     if self.routine.denominator:
-                        raise Exception('modify denominator are not compatible with complex mass scheme')                
-
-                    out.write('    denom = %(COUP)s/(P%(i)s(0)**2-P%(i)s(1)**2-P%(i)s(2)**2-P%(i)s(3)**2 - M%(i)s**2)\n' % \
+                        if 'P1N' not in self.tag:
+                            raise Exception('modify denominator are not compatible with complex mass scheme', self.tag)                
+                    if 'P1N' not in self.tag:
+                        out.write('    denom = %(COUP)s/(P%(i)s(0)**2-P%(i)s(1)**2-P%(i)s(2)**2-P%(i)s(3)**2 - M%(i)s**2)\n' % \
                       {'i': self.outgoing, 'COUP': coup_name})
-                self.declaration.add(('complex','denom'))
+                if 'P1N' not in self.tag:
+                    self.declaration.add(('complex','denom'))
                 if aloha.loop_mode:
                     ptype = 'list_complex'
                 else:
                     ptype = 'list_double'
-                self.declaration.add((ptype,'P%s' % self.outgoing))
+                if 'P1N' not in self.tag:
+                    self.declaration.add((ptype,'P%s' % self.outgoing))
+                else:
+                    coeff = '%(COUP)s*' % {'COUP': coup_name}  
             else:
                 if coup_name == 'COUP':
                     coeff = 'COUP*'
@@ -1102,7 +1116,7 @@ class ALOHAWriterForFortranLoop(ALOHAWriterForFortran):
         # couplings
         if couplings is None:
             detected_couplings = [name for type, name in self.declaration if name.startswith('COUP')]
-            coup_sort = lambda x,y: int(x[4:])-int(y[4:])  
+            #coup_sort = lambda x,y: int(x[4:])-int(y[4:])  
             detected_couplings.sort(key=lambda x: int(x[4:]) if x[4:] else 0 )
             if detected_couplings:
                 couplings = detected_couplings
@@ -1595,7 +1609,9 @@ class ALOHAWriterForCPP(WriteALOHA):
         out = StringIO()
 
         if self.routine.contracted:
-            for name,obj in self.routine.contracted.items():
+            keys = sorted(self.routine.contracted.keys())
+            for name in keys:
+                obj = self.routine.contracted[name]
                 out.write(' %s = %s;\n' % (name, self.write_obj(obj)))
                 self.declaration.add(('complex', name))
         
@@ -2213,7 +2229,7 @@ class ALOHAWriterForPython(WriteALOHA):
 
         text = text.getvalue()
         if self.out_path:        
-            writer = self.writer(self.out_path)
+            writer = self.writer(self.out_path, 'a')
             commentstring = 'This File is Automatically generated by ALOHA \n'
             commentstring += 'The process calculated in this file is: \n'
             commentstring += self.routine.infostr + '\n'

@@ -18,7 +18,6 @@ different languages/frameworks (Fortran and Pythia8). Uses the PLY 3.3
 Lex + Yacc framework"""
 
 from __future__ import absolute_import
-from __future__ import print_function
 import logging
 import os
 import re
@@ -29,6 +28,7 @@ from six.moves import input
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 sys.path.append(os.path.join(root_path, os.path.pardir))
 
+import madgraph
 import madgraph.various.misc as misc
 
 from madgraph import MadGraph5Error
@@ -37,6 +37,8 @@ import vendor.ply.yacc as yacc
 import models.check_param_card as check_param_card
 
 logger = logging.getLogger('madgraph.ufo_parsers')
+if madgraph.ordering:
+    set	= misc.OrderedSet
 
 # PLY lexer class
 
@@ -870,7 +872,7 @@ class UFOExpressionParserCPP(UFOExpressionParser):
         elif p[1] == 'reglog': p[0] = 'reglog' + p[2]
         elif p[1] == 'reglogp': p[0] = 'reglogp' + p[2]
         elif p[1] == 'reglogm': p[0] = 'reglogm' + p[2]
-        elif p[1] in self.buitin_equiv: p[0] = self.builtin_equiv[p[1]] + p[2]
+        elif p[1] in self.builtin_equiv: p[0] = self.builtin_equiv[p[1]] + p[2]
         
 
     def p_expression_real(self, p):

@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 ################################################################################
 #
 # Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
@@ -243,7 +243,8 @@ class make_info_html:
         nb_diag = 0
                 
         pat = re.compile(r'''Amplitude\(s\) for diagram number (\d+)''' )
-       
+        if not os.path.exists(path):
+            path = os.path.join(self.dir, 'SubProcesses', proc, 'matrix%s_orig.f' % id)
         text = open(path).read()
         for match in re.finditer(pat, text):
             pass
@@ -352,7 +353,7 @@ class make_info_html_nlo(make_info_html):
                                 if content.startswith('P') and 
                                 os.path.isdir(os.path.join(self.dir,'SubProcesses',content))
                                 and os.path.islink(os.path.join(self.dir,'SubProcesses',content,'fks_singular.f'))]
-        
+        subproc.sort()
         for proc in subproc:
             files_dict = {'born': ['born.f'], 
                           'virt': [os.path.join('V' + proc[1:], 'loop_matrix.f')],

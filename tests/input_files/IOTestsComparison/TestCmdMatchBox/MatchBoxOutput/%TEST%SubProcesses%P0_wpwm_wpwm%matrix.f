@@ -173,7 +173,7 @@ C     LOCAL VARIABLES
 C     
       INTEGER I,J
       COMPLEX*16 ZTEMP
-      REAL*8 DENOM(NCOLOR), CF(NCOLOR,NCOLOR)
+      REAL*8  CF(NCOLOR,NCOLOR)
       COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR), LNJAMP(NCOLOR)
       COMPLEX*16 W(18,NWAVEFUNCS)
       COMPLEX*16 DUM0,DUM1
@@ -186,8 +186,7 @@ C
 C     
 C     COLOR DATA
 C     
-      DATA DENOM(1)/1/
-      DATA (CF(I,  1),I=  1,  1) /    1/
+      DATA (CF(I,  1),I=  1,  1) /1.000000000000000D+00/
 C     1 ColorOne()
 C     ----------
 C     BEGIN CODE
@@ -216,8 +215,8 @@ C     Amplitude(s) for diagram number 6
       CALL VVV1_3(W(1,1),W(1,3),GC_53,MDL_MZ,MDL_WZ,W(1,5))
 C     Amplitude(s) for diagram number 7
       CALL VVV1_0(W(1,4),W(1,2),W(1,5),GC_53,AMP(7))
-      JAMP(1)=+AMP(1)+AMP(2)+AMP(3)+AMP(4)+AMP(5)+AMP(6)+AMP(7)
-      LNJAMP(1)=+AMP(1)+AMP(2)+AMP(3)+AMP(4)+AMP(5)+AMP(6)+AMP(7)
+      JAMP(1) = AMP(1)+AMP(2)+AMP(3)+AMP(4)+AMP(5)+AMP(6)+AMP(7)
+      LNJAMP(1) = AMP(1)+AMP(2)+AMP(3)+AMP(4)+AMP(5)+AMP(6)+AMP(7)
 
       MG5_0_MATRIX = 0.D0
       DO I = 1, NCOLOR
@@ -225,7 +224,7 @@ C     Amplitude(s) for diagram number 7
         DO J = 1, NCOLOR
           ZTEMP = ZTEMP + CF(J,I)*JAMP(J)
         ENDDO
-        MG5_0_MATRIX = MG5_0_MATRIX+ZTEMP*DCONJG(JAMP(I))/DENOM(I)
+        MG5_0_MATRIX = MG5_0_MATRIX+ZTEMP*DCONJG(JAMP(I))
       ENDDO
 
       END
@@ -274,7 +273,7 @@ C     LOCAL VARIABLES
 C     
       INTEGER I,J
       COMPLEX*16 ZTEMP
-      REAL*8 DENOM(NCOLOR), CF(NCOLOR,NCOLOR)
+      REAL*8 CF(NCOLOR,NCOLOR)
       COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR), LNJAMP(NCOLOR)
       COMMON/MG5_0_JAMP/JAMP,LNJAMP
 
@@ -289,8 +288,7 @@ C
 C     
 C     COLOR DATA
 C     
-      DATA DENOM(1)/1/
-      DATA (CF(I,  1),I=  1,  1) /    1/
+      DATA (CF(I,  1),I=  1,  1) /1.000000000000000D+00/
 C     1 ColorOne()
 C     ----------
 C     BEGIN CODE
@@ -323,8 +321,8 @@ C     Amplitude(s) for diagram number 6
       CALL VVV1_3(W(1,1),W(1,3),GC_53,MDL_MZ,MDL_WZ,W(1,5))
 C     Amplitude(s) for diagram number 7
       CALL VVV1_0(W(1,4),W(1,2),W(1,5),GC_53,AMP(7))
-      JAMP(1)=+AMP(1)+AMP(2)+AMP(3)+AMP(4)+AMP(5)+AMP(6)+AMP(7)
-      LNJAMP(1)=+AMP(1)+AMP(2)+AMP(3)+AMP(4)+AMP(5)+AMP(6)+AMP(7)
+      JAMP(1) = AMP(1)+AMP(2)+AMP(3)+AMP(4)+AMP(5)+AMP(6)+AMP(7)
+      LNJAMP(1) = AMP(1)+AMP(2)+AMP(3)+AMP(4)+AMP(5)+AMP(6)+AMP(7)
 
       END
 

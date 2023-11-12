@@ -103,7 +103,6 @@ class LoopExporterFortran(object):
         """Initiate the LoopExporterFortran with directory information on where
         to find all the loop-related source files, like CutTools"""
 
-
         self.opt = dict(self.default_opt)
         if opt:
             self.opt.update(opt)
@@ -136,7 +135,7 @@ class LoopExporterFortran(object):
             
         if self.dependencies=='internal':
             new_CT_path = pjoin(targetPath,'Source','CutTools')
-            shutil.copytree(self.cuttools_dir, new_CT_path, symlinks=True)
+            misc.copytree(self.cuttools_dir, new_CT_path, symlinks=True)
             
             current = misc.detect_current_compiler(os.path.join(new_CT_path,
                                                                     'makefile'))
@@ -201,6 +200,15 @@ class LoopExporterFortran(object):
         """
         if not hasattr(self, 'aloha_model'):
             self.aloha_model = create_aloha.AbstractALOHAModel(model.get('modelpath'))
+
+        missing_lor = []
+        for lor in model.get('lorentz'):
+            if not hasattr(self.aloha_model.model.lorentz, lor.name):
+                missing_lor.append(lor)
+        if missing_lor:
+            logger.debug("adding in aloha model %s lorentz struct" % len(missing_lor))
+            self.aloha_model.add_Lorentz_object(missing_lor)
+        
         return self.aloha_model
 
     #===========================================================================
@@ -271,7 +279,7 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         MLCard.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'))
         MLCard.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
             
-    def write_f2py_makefile(self):
+    def write_f2py_makefile(self, model):
         return
     
     def write_f2py_check_sa(self, matrix_element, output_path):
@@ -2020,7 +2028,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             elif tir_name == "iregi":
                 # This is the right paths for IREGI
                 new_iregi_path = pjoin(targetPath,os.path.pardir,'Source','IREGI')
-                shutil.copytree(pjoin(libpath,os.path.pardir), new_iregi_path, 
+                misc.copytree(pjoin(libpath,os.path.pardir), new_iregi_path, 
                                                                   symlinks=True)
                 
                 current = misc.detect_current_compiler(
@@ -2297,9 +2305,10 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 final_lwf = lamp.get_final_loop_wavefunction()
                 while not final_lwf is None:
                     # We define here an HEFT vertex as any vertex built up from
-                    # only massless vectors and scalars (at least one of each)
+                    # only massless vectors and massive scalars (at least one of each)
+                    # We ask for massive scalars in part to remove the gluon ghost false positive.
                     scalars = len([1 for wf in final_lwf.get('mothers') if 
-                                                             wf.get('spin')==1])
+                                    wf.get('spin')==1 and wf.get('mass')!='ZERO'])
                     vectors = len([1 for wf in final_lwf.get('mothers') if 
                                   wf.get('spin')==3 and wf.get('mass')=='ZERO'])
                     if scalars>=1 and vectors>=1 and \
@@ -2873,9 +2882,9 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         
         # Now recast the split order basis for the loop, born and counterterm
         # amplitude into one single splitorderbasis.
-        overall_so_basis = list(set(
+        overall_so_basis = misc.make_unique(
             [born_so[0] for born_so in amps_orders['born_amp_orders']]+
-            [born_so[0] for born_so in amps_orders['loop_amp_orders']]))
+            [born_so[0] for born_so in amps_orders['loop_amp_orders']])
         # We must re-sort it to make sure it follows an increasing WEIGHT order
         order_hierarchy = matrix_element.get('processes')[0]\
                                             .get('model').get('order_hierarchy')
@@ -3072,6 +3081,11 @@ class LoopProcessExporterFortranMatchBox(LoopProcessOptimizedExporterFortranSA,
         return 'MG5_%d_'%matrix_element.get('processes')[0].get('id')         
       
 
+    def finalize(self, matrix_element, cmdhistory, MG5options, outputflag):
+        out = super().finalize(matrix_element, cmdhistory, MG5options, outputflag)
+        misc.compile(cwd=pjoin(self.dir_path,'Source','MODEL'))
+        return out
+
 #===============================================================================
 # LoopInducedExporter
 #===============================================================================
@@ -3087,6 +3101,11 @@ class LoopInducedExporterME(LoopProcessOptimizedExporterFortranSA):
         """ Initialize the process, setting the proc characteristics."""
         super(LoopInducedExporterME, self).__init__(*args, **opts)
         self.proc_characteristic['loop_induced'] = True
+
+        if self.opt and isinstance(self.opt['output_options'], dict) and \
+                                       't_strategy' in self.opt['output_options']:
+            self.opt['t_strategy'] = banner_mod.ConfigFile.format_variable(
+                  self.opt['output_options']['t_strategy'], int, 't_strategy')
     
     def get_context(self,*args,**opts):
         """ Make sure that the contextual variable MadEventOutput is set to

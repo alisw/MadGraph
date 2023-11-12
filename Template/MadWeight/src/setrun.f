@@ -309,7 +309,8 @@ c     scale choice is requested. In this case edit the
 c     user subroutines set_ren_scale and set_fac_scale in setpara.f
 
       call get_logical(npara,param,value," fixed_ren_scale ",fixed_ren_scale,.true.)
-      call get_logical(npara,param,value," fixed_fac_scale ",fixed_fac_scale,.true.)
+      call get_logical(npara,param,value," fixed_fac_scale1 ",fixed_fac_scale1,.true.)
+      call get_logical(npara,param,value," fixed_fac_scale2 ",fixed_fac_scale2,.true.)      
       call get_real   (npara,param,value," scale "          ,scale,91.188d0)
       call get_real   (npara,param,value," dsqrt_q2fact1 "  ,sf1  ,91.188d0)
       call get_real   (npara,param,value," dsqrt_q2fact2 "  ,sf2  ,91.188d0)
@@ -503,36 +504,11 @@ C-------------------------------------------------
       return
       end
 
-      logical FUNCTION dummy_cuts(P)
-C**************************************************************************
-C     INPUT:
-C            P(0:3,1)           MOMENTUM OF INCOMING PARTON
-C            P(0:3,2)           MOMENTUM OF INCOMING PARTON
-C            P(0:3,3)           MOMENTUM OF ...
-C            ALL MOMENTA ARE IN THE REST FRAME!!
-C            COMMON/JETCUTS/   CUTS ON JETS
-C     OUTPUT:
-C            TRUE IF EVENTS PASSES ALL CUTS LISTED
-C**************************************************************************
-      IMPLICIT NONE
-c
-c     Constants
-c
-      include 'nexternal.inc'
-C
-C     ARGUMENTS
-C
-      REAL*8 P(0:3,nexternal)
-C
-C     PARAMETERS
-C
-      real*8 PI
-      parameter( PI = 3.14159265358979323846d0 )
-c
-c     particle identification
-c
 
-      dummy_cuts=.true.
-
-      return
+      INTEGER FUNCTION GET_NHEL(HEL, IPART)
+      implicit none
+      integer hel
+      integer ipart
+      get_nhel = 99
+      return 
       end

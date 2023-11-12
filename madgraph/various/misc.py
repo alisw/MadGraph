@@ -15,7 +15,7 @@
 """A set of functions performing routine administrative I/O tasks."""
 
 from __future__ import absolute_import
-from __future__ import print_function
+import collections
 import contextlib
 import itertools
 import logging
@@ -58,6 +58,7 @@ else:
 logger = logging.getLogger('cmdprint.ext_program')
 logger_stderr = logging.getLogger('madevent.misc')
 pjoin = os.path.join
+misc = locals
    
 #===============================================================================
 # parse_info_str
@@ -147,10 +148,14 @@ def get_pkg_info(info_str=None):
                                                   "VERSION"),
                                                   parse_info_str, 
                                                   print_error=False)
-        PACKAGE_INFO = info_dict
-        
-    return info_dict
-
+        if info_dict:                                          
+           PACKAGE_INFO = info_dict
+        else:
+           info_dict ={}
+           info_dict['version'] = '3.x.x'
+           info_dict['date'] = '20xx-xx-xx'
+           PACKAGE_INFO = info_dict        
+        return PACKAGE_INFO
 #===============================================================================
 # get_time_info
 #===============================================================================
@@ -247,7 +252,7 @@ def get_ninja_quad_prec_support(ninja_lib_path):
             p = Popen([ninja_config, '-quadsupport'], stdout=subprocess.PIPE, 
                                                          stderr=subprocess.PIPE)
             output, error = p.communicate()
-            return 'TRUE' in output.decode().upper()
+            return 'TRUE' in output.decode(errors='ignore').upper()
         except Exception:
             pass
     
@@ -281,16 +286,11 @@ def has_f2py():
     has_f2py = False
     if which('f2py'):
         has_f2py = True
-    elif sys.version_info[1] == 6:
-        if which('f2py-2.6'):
-            has_f2py = True
-        elif which('f2py2.6'):
-            has_f2py = True                 
-    else:
-        if which('f2py-2.7'):
-            has_f2py = True 
-        elif which('f2py2.7'):
-            has_f2py = True  
+    elif which('f2py%d.%d' %(sys.version_info.major, sys.version_info.minor)):
+        has_f2py = True
+    elif which('f2py%d' %(sys.version_info.major)):
+        has_f2py = True
+
     return has_f2py       
         
 #===============================================================================
@@ -308,6 +308,8 @@ def deactivate_dependence(dependency, cmd=None, log = None):
     
 
     if dependency in ['pjfry','golem','samurai','ninja','collier']:
+        if dependency not in cmd.options:
+            return
         if cmd.options[dependency] not in ['None',None,'']:
             tell("Deactivating MG5_aMC dependency '%s'"%dependency)
             cmd.options[dependency] = None
@@ -345,7 +347,7 @@ def activate_dependence(dependency, cmd=None, log = None, MG5dir=None):
     if dependency=='ninja':
         if cmd.options['ninja'] in ['None',None,''] or\
          (cmd.options['ninja'] == './HEPTools/lib' and not MG5dir is None and\
-         which_lib(pjoin(MG5dir,cmd.options['ninja'],'libninja.a')) is None):
+         which_lib(pjoin(MG5dir,cmd.options['ninja'],'lib','libninja.a')) is None):
             tell("Installing ninja...")
             cmd.do_install('ninja')
  
@@ -411,12 +413,14 @@ def multiple_try(nb_try=5, sleep=20):
 
     def deco_retry(f):
         def deco_f_retry(*args, **opt):
+            my_error = None
             for i in range(nb_try):
                 try:
                     return f(*args, **opt)
                 except KeyboardInterrupt:
                     raise
                 except Exception as error:
+                    my_error = error
                     global wait_once
                     if not wait_once:
                         text = """Start waiting for update. (more info in debug mode)"""
@@ -430,7 +434,7 @@ def multiple_try(nb_try=5, sleep=20):
 
             if __debug__:
                 raise
-            raise error.__class__('[Fail %i times] \n %s ' % (i+1, error))
+            raise my_error.__class__('[Fail %i times] \n %s ' % (i+1, my_error))
         return deco_f_retry
     return deco_retry
 
@@ -460,6 +464,12 @@ def get_scan_name(first, last):
     else:
         name = "%s[%s-%s]%s" % (base, first[len(base):], last[len(base):],end)
     return name
+
+def copytree(*args, **opts):
+
+    if 'copy_function' not in opts:
+        opts['copy_function'] = shutil.copy
+    return shutil.copytree(*args, **opts)
 
 #===============================================================================
 # Compiler which returns smart output error in case of trouble
@@ -518,7 +528,7 @@ def compile(arg=[], cwd=None, mode='fortran', job_specs = True, nb_core=1 ,**opt
             raise MadGraph5Error(error_msg)
 
         try:
-            out = out.decode('utf-8')
+            out = out.decode('utf-8', errors='ignore')
         except Exception:
             out = str(out)
 
@@ -553,7 +563,7 @@ def get_gfortran_version(compiler='gfortran'):
         p = Popen([compiler, '-dumpversion'], stdout=subprocess.PIPE, 
                     stderr=subprocess.PIPE)
         output, error = p.communicate()
-        output = output.decode("utf-8")
+        output = output.decode("utf-8",errors='ignore')
         version_finder=re.compile(r"(?P<version>\d[\d.]*)")
         version = version_finder.search(output).group('version')
         return version
@@ -734,17 +744,26 @@ def stdchannel_redirected(stdchannel, dest_filename):
             libraries.append('rt')                                                                                                                                                                          
     """
 
-    try:
-        oldstdchannel = os.dup(stdchannel.fileno())
-        dest_file = open(dest_filename, 'w')
-        os.dup2(dest_file.fileno(), stdchannel.fileno())
-        yield
-    finally:
-        if oldstdchannel is not None:
-            os.dup2(oldstdchannel, stdchannel.fileno())
-            os.close(oldstdchannel)
-        if dest_file is not None:
-            dest_file.close()
+    if logger.getEffectiveLevel()>5:
+        #deactivate this for hard-core debugging level
+        try:
+            oldstdchannel = os.dup(stdchannel.fileno())
+            dest_file = open(dest_filename, 'w')
+            os.dup2(dest_file.fileno(), stdchannel.fileno())
+            yield
+        finally:
+            if oldstdchannel is not None:
+                os.dup2(oldstdchannel, stdchannel.fileno())
+                os.close(oldstdchannel)
+            if dest_file is not None:
+                dest_file.close()
+    else:
+        try:
+            logger.debug('no stdout/stderr redirection due to debug level')
+            yield
+        finally:
+            return
+        
         
 def get_open_fds():
     '''
@@ -773,7 +792,8 @@ def detect_if_cpp_compiler_is_clang(cpp_compiler):
         # Cannot probe the compiler, assume not clang then
         return False
 
-    output = output.decode()
+    output = output.decode(errors='ignore')
+    
     return 'LLVM' in str(output) or "clang" in str(output)
 
 
@@ -791,8 +811,8 @@ def detect_cpp_std_lib_dependence(cpp_compiler):
                 # we venture a guess here.
                 return '-lc++'
             else:
-                v = float(v.rsplit('.')[1])
-                if v >= 9:
+                maj, v = [float(x) for x in v.rsplit('.')[:2]]
+                if maj >=11 or (maj ==10 and v >= 9):
                    return '-lc++'
                 else:
                    return '-lstdc++'
@@ -848,8 +868,8 @@ def rm_old_compile_file():
     
     # remove related libraries
     libraries = ['libblocks.a', 'libgeneric_mw.a', 'libMWPS.a', 'libtools.a', 'libdhelas3.a',
-                 'libdsample.a', 'libgeneric.a', 'libmodel.a', 'libpdf.a', 'libdhelas3.so', 'libTF.a', 
-                 'libdsample.so', 'libgeneric.so', 'libmodel.so', 'libpdf.so']
+                 'libdsample.a', 'libgeneric.a', 'libmodel.a', 'libpdf.a', 'libgammaUPC.a','libdhelas3.so', 'libTF.a', 
+                 'libdsample.so', 'libgeneric.so', 'libmodel.so', 'libpdf.so', 'libgammaUPC.so']
     lib_pos='./lib'
     [os.remove(os.path.join(lib_pos, lib)) for lib in libraries \
                                  if os.path.exists(os.path.join(lib_pos, lib))]
@@ -938,7 +958,7 @@ def call_stdout(arg, *args, **opt):
         arg[0] = './%s' % arg[0]
         out = subprocess.call(arg, *args,  stdout=subprocess.PIPE, **opt)
         
-    str_out = out.stdout.read().decode().strip()
+    str_out = out.stdout.read().decode(errors='ignore').strip()
     return str_out
 
 
@@ -1183,7 +1203,7 @@ def gunzip(path, keep=False, stdout=None):
         raise
     else:    
         try:    
-            open(stdout,'w').write(gfile.read().decode())
+            open(stdout,'w').write(gfile.read().decode(errors='ignore'))
         except IOError as error:
             sprint(error)
             # this means that the file is actually not gzip
@@ -1291,7 +1311,7 @@ class open_file(object):
             configuration = {'text_editor': None,
                              'eps_viewer':None,
                              'web_browser':None}
-        
+
         for key in configuration:
             if key == 'text_editor':
                 # Treat text editor ONLY text base editor !!
@@ -1315,13 +1335,24 @@ class open_file(object):
             elif key == 'eps_viewer':
                 if configuration[key]:
                     cls.eps_viewer = configuration[key]
-                    continue
+                if sys.platform == 'darwin':
+                    import platform
+                    ver, _, _ =  platform.mac_ver()
+                    # open does not support eps anymore since 13.0
+                    # pass by a converter first
+                    if int(ver.split('.')[0]) > 12: 
+                        if which('pstopdf'):
+                            cls.eps_viewer = 'pstopdf'
+                        elif  which('ps2pdf'):
+                            cls.eps_viewer = 'ps2pdf'
+
                 # else keep None. For Mac this will use the open command.
             elif key == 'web_browser':
                 if configuration[key]:
                     cls.web_browser = configuration[key]
                     continue
                 # else keep None. For Mac this will use the open command.
+
 
     @staticmethod
     def find_valid(possibility, program='program'):
@@ -1360,11 +1391,21 @@ class open_file(object):
 
     def open_mac_program(self, program, file_path):
         """ open a text with the text editor """
-        
+
         if not program:
             # Ask to mac manager
             os.system('open %s' % file_path)
-        elif which(program):
+        elif program == 'pstopdf':
+            output = file_path.rsplit('.',1)[0]+ '.pdf'
+            arguments = [program, file_path, '-o', output]
+            subprocess.call(arguments, stdout=open(os.devnull,"w"))
+            return self.open_mac_program(None, output)
+        elif program == 'ps2pdf':
+            output = file_path.rsplit('.',1)[0]+ '.pdf'
+            arguments = [program, file_path, output]
+            subprocess.call(arguments, stdout=open(os.devnull,"w"))
+            return self.open_mac_program(None, output)
+        elif which(program): 
             # shell program
             arguments = program.split() # Allow argument in program definition
             arguments.append(file_path)
@@ -1494,6 +1535,10 @@ def sprint(*args, **opt):
 
     return 
 
+class misc(object):
+    @staticmethod
+    def sprint(*args, **opt):
+        return sprint(*args, **opt)
 ################################################################################
 # function to check if two float are approximatively equal
 ################################################################################
@@ -1638,7 +1683,7 @@ class ProcessTimer:
     # dyld: DYLD_ environment variables being ignored because main executable (/bin/ps) is setuid or setgid
     flash = subprocess.Popen("ps -p %i -o rss"%self.p.pid,
                   shell=True,stdout=subprocess.PIPE,stderr=open(os.devnull,"w"))
-    stdout_list = flash.communicate()[0].decode().split('\n')
+    stdout_list = flash.communicate()[0].decode(errors='ignore').split('\n')
     rss_memory = int(stdout_list[1])
     # for now we ignore vms
     vms_memory = 0
@@ -1707,22 +1752,31 @@ class ProcessTimer:
 #    except psutil.error.NoSuchProcess:
 #      pass
 
-## Define apple_notify (in a way which is system independent
-class Applenotification(object):
+## Define system_notify (in a way which is system independent
+class Notification(object):
 
     def __init__(self):
         self.init = False
         self.working = True
 
-    def load_notification(self):        
-        try:
-            import Foundation
-            import objc
-            self.NSUserNotification = objc.lookUpClass('NSUserNotification')
-            self.NSUserNotificationCenter = objc.lookUpClass('NSUserNotificationCenter')
-        except:
-            self.working=False
-        self.working=True
+    def load_notification(self):
+        self.init = True
+        self.working = False
+        if sys.platform == 'darwin':
+            try:
+                import Foundation
+                import objc
+                self.NSUserNotification = objc.lookUpClass('NSUserNotification')
+                self.NSUserNotificationCenter = objc.lookUpClass('NSUserNotificationCenter')
+                self.working = "Foundation"
+            except:
+                if which('osascript'):
+                    self.working = 'osascript'
+                return
+        elif sys.platform == 'linux':
+            if which('notify-send'):
+                self.working = 'notify-send'
+            
 
     def __call__(self,subtitle, info_text, userInfo={}):
         
@@ -1730,22 +1784,37 @@ class Applenotification(object):
             self.load_notification()
         if not self.working:
             return
-        try:
-            notification = self.NSUserNotification.alloc().init()
-            notification.setTitle_('MadGraph5_aMC@NLO')
-            notification.setSubtitle_(subtitle)
-            notification.setInformativeText_(info_text)
+        elif self.working == "Foundation":
             try:
-                notification.setUserInfo_(userInfo)
+                notification = self.NSUserNotification.alloc().init()
+                notification.setTitle_('MadGraph5_aMC@NLO')
+                notification.setSubtitle_(subtitle)
+                notification.setInformativeText_(info_text)
+                try:
+                    notification.setUserInfo_(userInfo)
+                except:
+                    pass
+                self.NSUserNotificationCenter.defaultUserNotificationCenter().scheduleNotification_(notification)
             except:
                 pass
-            self.NSUserNotificationCenter.defaultUserNotificationCenter().scheduleNotification_(notification)
-        except:
-            pass        
-        
+            
+        elif self.working=='osascript':
+            try:
+                os.system("""
+              osascript -e 'display notification "{}" with title "MadGraph5_aMC@NLO" subtitle "{}"'
+              """.format(info_text, subtitle))
+            except:
+                pass
+
+        elif self.working == 'notify-send':
+            try:
+                os.system(""" notify-send "MadGraph5_aMC@NLO" "{}"  &> /dev/null """.format(info_text,subtitle))
+            except:
+                pass
 
 
-apple_notify = Applenotification()
+
+system_notify = Notification()
 
 class EasterEgg(object):
     
@@ -1776,7 +1845,7 @@ class EasterEgg(object):
         "%s" + \
         "*                                                          *\n" + \
         "*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
-        "*    https://server06.fynu.ucl.ac.be/projects/madgraph     *\n" + \
+        "*              http://madgraph.phys.ucl.ac.be/             *\n" + \
         "*                            and                           *\n" + \
         "*            http://amcatnlo.web.cern.ch/amcatnlo/         *\n" + \
         "*                                                          *\n" + \
@@ -1799,7 +1868,28 @@ class EasterEgg(object):
         "*          *          ^.             .^          *         *\n" + \
         "*        *              \"-.._____.,-\"              *       *\n"
 
-    special_banner = {(4,5): May4_banner}
+    Zcommezorglub =  "* M:::::::::M         M:::::::::M                          *\n" + \
+        "* M:::::::::M         M:::::::::M                          *\n" + \
+        "* M::::::::::M       M::::::::::M                          *\n" + \
+        "* M:::::::::::M     M:::::::::::M   (_)___                 *\n" + \
+        "* M:::::::M::::M   M::::M:::::::M   | / __|                *\n" + \
+        "* M::::::M M::::M M::::M M::::::M   | \__ \                *\n" + \
+        "* M::::::M  M::::M::::M  M::::::M   |_|___/                *\n" + \
+        "* M::::::M   M:::::::M   M::::::M                          *\n" + \
+        "* M::::::M    M:::::M    M::::::M    / _| ___  _ __        *\n" + \
+        "* M::::::M     MMMMM     M::::::M   | |_ / _ \| '__|       *\n" + \
+        "* M::::::M               M::::::M   |  _| (_) | |          *\n" + \
+        "* M::::::M               M::::::M   |_/\/\___/|_|          *\n" + \
+        "* M::::::M               M::::::M                          *\n" + \
+        "* MMMMMMMM               MMMMMMMM                          *\n" + \
+        "*                                                          *\n" + \
+        "*     https://en.wikipedia.org/wiki/Z_comme_Zorglub        *\n"    
+
+
+
+
+
+    special_banner = {(4,5): May4_banner, (14,10): Zcommezorglub}
 
     
     def __init__(self, msgtype):
@@ -1851,7 +1941,26 @@ class EasterEgg(object):
         if MADEVENT:
             return
         import madgraph.interface.madgraph_interface as madgraph_interface
-        madgraph_interface.CmdExtended.intro_banner= self.default_banner_1 + self.special_banner[date] + self.default_banner_2
+        if date == (14,10):
+            def flip(text):
+                new_text = []
+                for line in text.split('\n'):
+                    new_line = []
+                    for word in line.split(' '):
+                        if "%" in word:
+                            new_line.append(word)
+                            continue
+                        new_line.append(''.join(list(reversed(list(word)))))
+                    new_text.append(' '.join(new_line))
+                return '\n'.join(new_text)
+
+            madgraph_interface.CmdExtended.intro_banner= flip(self.default_banner_1) + \
+                                                        self.special_banner[date] + \
+                                                        flip(self.default_banner_2) #+ \
+                                                        #"\n* homage to Franquin (text above in zorgland)              *" +\
+                                                        #"\n************************************************************"
+        else:
+            madgraph_interface.CmdExtended.intro_banner= self.default_banner_1 + self.special_banner[date] + self.default_banner_2
         
 
     def call_apple(self, msg):
@@ -1859,7 +1968,7 @@ class EasterEgg(object):
         #1. control if the volume is on or not
         p = subprocess.Popen("osascript -e 'get volume settings'", stdout=subprocess.PIPE, shell=True)
         output, _  = p.communicate()
-        output = output.decode()
+        output = output.decode(errors='ignore')
         #output volume:25, input volume:71, alert volume:100, output muted:true
         info = dict([[a.strip() for a in l.split(':',1)] for l in output.strip().split(',')])
         muted = False
@@ -1870,7 +1979,7 @@ class EasterEgg(object):
         
         if muted:
             if not EasterEgg.done_notification:
-                apple_notify('On April first','turn up your volume!')
+                system_notify('On April first','turn up your volume!')
                 EasterEgg.done_notification = True
         else:
             os.system('say %s' % msg)
@@ -2001,11 +2110,16 @@ def set_global(loop=False, unitary=True, mp=False, cms=False):
 def plugin_import(module, error_msg, fcts=[]):
     """convenient way to import a plugin file/function"""
     
+    if six.PY2:
+        level = -1
+    else:
+        level = 0
+
     try:
-        _temp = __import__('PLUGIN.%s' % module, globals(), locals(), fcts, -1)
+        _temp = __import__('PLUGIN.%s' % module, globals(), locals(), fcts, level)
     except ImportError:
         try:
-            _temp = __import__('MG5aMC_PLUGIN.%s' % module, globals(), locals(), fcts, -1)
+            _temp = __import__('MG5aMC_PLUGIN.%s' % module, globals(), locals(), fcts, level)
         except ImportError:
             raise MadGraph5Error(error_msg)
     
@@ -2070,11 +2184,17 @@ def import_python_lhapdf(lhapdfconfig):
     try:
         
         lhapdf_libdir=subprocess.Popen([lhapdfconfig,'--libdir'],\
-                                           stdout=subprocess.PIPE).stdout.read().decode().strip()
+                                           stdout=subprocess.PIPE).stdout.read().decode(errors='ignore').strip()
     except:
         use_lhapdf=False
         return False
     else:
+        if sys.platform != "darwin":
+            if not 'LD_LIBRARY_PATH' in os.environ:
+                os.environ['LD_LIBRARY_PATH'] = lhapdf_libdir
+            else:
+                os.environ['LD_LIBRARY_PATH'] = '%s:%s' %(lhapdf_libdir,os.environ['LD_LIBRARY_PATH'])
+        
         try:
             candidates=[dirname for dirname in os.listdir(lhapdf_libdir) \
                             if os.path.isdir(os.path.join(lhapdf_libdir,dirname))]
@@ -2096,7 +2216,7 @@ def import_python_lhapdf(lhapdfconfig):
                             if os.path.isdir(os.path.join(lhapdf_libdir+'64',dirname))]
         except OSError:
             candidates=[]
-        sprint(candidates, lhapdf_libdir+'64')
+
         for candidate in candidates:
             if os.path.isdir(os.path.join(lhapdf_libdir+'64',candidate,'site-packages')):
                 sys.path.insert(0,os.path.join(lhapdf_libdir+'64',candidate,'site-packages'))
@@ -2146,6 +2266,91 @@ def wget(http, path, *args, **opt):
         return call(['curl', '-L', http, '-o%s' % path], *args, **opt)
     else:
         return call(['wget', http, '--output-document=%s'% path], *args, **opt)
+
+
+def make_unique(input, keepordering=None):
+    "remove duplicate in a list "
+
+    if keepordering is None:
+        if MADEVENT:
+            keepordering = False
+        else:
+            keepordering = madgraph.ordering
+    if not keepordering:
+        return list(set(input))
+    else:
+        return list(dict.fromkeys(input)) 
+
+if six.PY3:
+    try:
+        from collections import MutableSet
+    except ImportError: # this is for python3.10
+        from collections.abc import  MutableSet
+    
+    class OrderedSet(collections.OrderedDict, MutableSet):
+
+        def __init__(self, arg=None):
+            super( OrderedSet, self).__init__()
+            if arg:
+                self.update(arg)
+
+        def update(self, *args, **kwargs):
+            if kwargs:
+                raise TypeError("update() takes no keyword arguments")
+
+            for s in args:
+                for e in s:
+                    self.add(e)
+
+        def add(self, elem):
+            self[elem] = None
+
+        def discard(self, elem):
+            self.pop(elem, None)
+
+        def pop(self, *args):
+            if args:
+                return super().pop(*args)
+            else:
+                key = next(iter(self))
+                del self[key]
+                return key
+
+        def __le__(self, other):
+            return all(e in other for e in self)
+
+        def __lt__(self, other):
+            return self <= other and self != other
+
+        def __ge__(self, other):
+            return all(e in self for e in other)
+
+        def __gt__(self, other):
+            return self >= other and self != other
+
+        def __repr__(self):
+            return 'OrderedSet([%s])' % (', '.join(map(repr, self.keys())))
+
+        def __str__(self):
+            return '{%s}' % (', '.join(map(repr, self.keys())))
+
+        def __eq__(self, other):
+            try:
+                return set(self) == set(other)
+            except TypeError:
+                return False
+        difference = property(lambda self: self.__sub__)
+        difference_update = property(lambda self: self.__isub__)
+        intersection = property(lambda self: self.__and__)
+        intersection_update = property(lambda self: self.__iand__)
+        issubset = property(lambda self: self.__le__)
+        issuperset = property(lambda self: self.__ge__)
+        symmetric_difference = property(lambda self: self.__xor__)
+        symmetric_difference_update = property(lambda self: self.__ixor__)
+        union = property(lambda self: self.__or__)
+else:
+    OrderedSet = set
+
 
 def cmp_to_key(mycmp):
     'Convert a cmp= function into a key= function (for using python2 type of sort)'
@@ -2211,10 +2416,10 @@ the file and returns last line in an internal buffer."""
           line = self.data[0]
           try:
             self.seek(-self.blksize * self.blkcount, 2) # read from end of file
-            self.data = (self.read(self.blksize).decode() + line).split('\n')
+            self.data = (self.read(self.blksize).decode(errors='ignore') + line).split('\n')
           except IOError:  # can't seek before the beginning of the file
             self.seek(0)
-            data = self.read(self.size - (self.blksize * (self.blkcount-1))).decode() + line
+            data = self.read(self.size - (self.blksize * (self.blkcount-1))).decode(errors='ignore') + line
             self.data = data.split('\n')
 
         if len(self.data) == 0:
@@ -2237,7 +2442,7 @@ the file and returns last line in an internal buffer."""
         # otherwise, read the whole thing...
         if self.size > self.blksize:
           self.seek(-self.blksize * self.blkcount, 2) # read from end of file
-        self.data = self.read(self.blksize).decode().split('\n')
+        self.data = self.read(self.blksize).decode(errors='ignore').split('\n')
         # strip the last item if it's empty...  a byproduct of the last line having
         # a newline at the end of it
         if not self.data[-1]:
@@ -2249,6 +2454,9 @@ the file and returns last line in an internal buffer."""
             return line
         else:
             raise StopIteration
+def tqdm(iterator, **opts):
+    return iterator
+
         
 ############################### TRACQER FOR OPEN FILE
 #openfiles = set()
@@ -2273,3 +2481,5 @@ the file and returns last line in an internal buffer."""
 #    return newfile(*args)
 #__builtin__.file = newfile
 #__builtin__.open = newopen
+
+

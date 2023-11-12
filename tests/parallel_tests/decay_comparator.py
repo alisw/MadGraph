@@ -18,7 +18,6 @@ by FR in the decays.py files of the model.
 from __future__ import division
 
 from __future__ import absolute_import
-from __future__ import print_function
 import logging
 import os
 import shutil
@@ -432,7 +431,7 @@ class DecayComparator(object):
 class TestFRDecay(unittest.TestCase):
     
     def test_decay_mssm(self):
-        decay_framework = DecayComparator('mssm')
+        decay_framework = DecayComparator('MSSM_SLHA2')
         
         for i, name in enumerate(decay_framework.particles_id.keys()):
             import time

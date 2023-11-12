@@ -230,23 +230,33 @@ export PYTHIA8LOCATION=$PY8PATH
 
 if [ ! -d $PYTHIA8LOCATION/xmldoc ]
 then
- PY8VER="8.2"
- echo ' USING PYTHIA 8, version >= 8.200'
- chmod +x $PYTHIA8LOCATION/bin/pythia8-config
- read HEPMCINCLIB <<< $($PYTHIA8LOCATION/bin/pythia8-config --hepmc2)
+  if [ -f $PYTHIA8LOCATION/share/Pythia8/xmldoc/Version.xml ]
+  then
+    while read line; do
+    if [[ $line == *"Pythia:versionNumber"*"8.2"* ]]; then PY8VER="8.2" ; echo ' USING PYTHIA 8.2xy' ; fi
+    if [[ $line == *"Pythia:versionNumber"*"8.3"* ]]; then PY8VER="8.3" ; echo ' USING PYTHIA 8.3xy' ; fi
+    done < $PYTHIA8LOCATION/share/Pythia8/xmldoc/Version.xml
+  else
+    echo "Cannot determine Pythia8 version, stopping run"
+    exit -1
+  fi
+  chmod +x $PYTHIA8LOCATION/bin/pythia8-config
+  read HEPMCINCLIB <<< $($PYTHIA8LOCATION/bin/pythia8-config --hepmc2)
 else
- PY8VER="8.1"
- echo ' USING PYTHIA 8, version < 8.200'
+  PY8VER="8.1"
+  echo ' USING PYTHIA 8.1xy'
 fi
 
 if [ "$PY8UTI" != "" ]
 then
  if [ $PY8VER == "8.1" ]; then cp -rf $thisdir/srcPythia8/Pythia8.cc $thisdir/Pythia8.cc; fi
  if [ $PY8VER == "8.2" ]; then cp -rf $thisdir/srcPythia8/Pythia82.cc $thisdir/Pythia82.cc; fi
+ if [ $PY8VER == "8.3" ]; then cp -rf $thisdir/srcPythia8/Pythia83.cc $thisdir/Pythia83.cc; fi
  cp -rf $thisdir/srcPythia8/Makefile $thisdir/Makefile
 else
  if [ $PY8VER == "8.1" ]; then cp -rf $thisdir/srcPythia8/Pythia8_hep.cc $thisdir/Pythia8.cc; fi
  if [ $PY8VER == "8.2" ]; then cp -rf $thisdir/srcPythia8/Pythia82_hep.cc $thisdir/Pythia82.cc; fi
+ if [ $PY8VER == "8.3" ]; then cp -rf $thisdir/srcPythia8/Pythia83_hep.cc $thisdir/Pythia83.cc; fi
  cp -rf $thisdir/srcPythia8/Makefile_hep $thisdir/Makefile
 fi
 if [ -f $thisdir/Pythia8.exe ]
@@ -256,6 +266,7 @@ fi
 
 if [ $PY8VER == "8.1" ]; then cp -rf $PYTHIA8LOCATION/xmldoc $thisdir; fi
 if [ $PY8VER == "8.2" ]; then cp -rf $PYTHIA8LOCATION/share/Pythia8/xmldoc $thisdir; fi
+if [ $PY8VER == "8.3" ]; then cp -rf $PYTHIA8LOCATION/share/Pythia8/xmldoc $thisdir; fi
 PY8UTIMAKE="PY8UTI="$PY8UTI
 FORFILEMAKE="FORFILE="$PY8UTI
 HEPMCMAKE="HEPMCINCLIB="$HEPMCINCLIB
@@ -263,6 +274,7 @@ LGFORTRANMAKE="LIBGFORTRAN=-lgfortran"
 
 if [ $PY8VER == "8.1" ]; then make Pythia8 "$PY8UTIMAKE" "$FORFILEMAKE" "$LGFORTRANMAKE" "$LIBSMAKE" "$LIBSMAKEP" "$INCLMAKE"; fi
 if [ $PY8VER == "8.2" ]; then make Pythia82 "$PY8UTIMAKE" "$FORFILEMAKE" "$LGFORTRANMAKE" "$LIBSMAKE" "$LIBSMAKEP" "$INCLMAKE" "$HEPMCMAKE"; fi
+if [ $PY8VER == "8.3" ]; then make Pythia83 "$PY8UTIMAKE" "$FORFILEMAKE" "$LGFORTRANMAKE" "$LIBSMAKE" "$LIBSMAKEP" "$INCLMAKE" "$HEPMCMAKE"; fi
 
 cd $thisdir
 if [ ! -f $thisdir/Pythia8.exe ]
@@ -305,11 +317,11 @@ TAUMASSPY=$TAUMASS
 GMASSPY=$GMASS
 
 if [ $BEAM1 == 1 ]; then iA=2212; elif [ $BEAM1 == -1 ]; then iA=-2212;
-elif [ $BEAM1 == 0 ]; then iA=-11; elif [ $BEAM1 == 2 ]; then iA=2112;
+elif [ $BEAM1 == 0 ]; then iA=-11; elif [ $BEAM1 == 3 ]; then iA=-11; elif [ $BEAM1 == 4 ]; then iA=-13; elif [ $BEAM1 == 2 ]; then iA=2112;
 elif [ $BEAM1 == -2 ]; then iA=-2112; else echo "Unrecognized incoming beam 1";
 exit 1; fi
 if [ $BEAM2 == 1 ]; then iB=2212; elif [ $BEAM2 == -1 ]; then iB=-2212;
-elif [ $BEAM2 == 0 ]; then iB=11; elif [ $BEAM2 == 2 ]; then iB=2112;
+elif [ $BEAM2 == 0 ]; then iB=11; elif [ $BEAM2 == 3 ]; then iB=11; elif [ $BEAM1 == 4 ]; then iA=13; elif [ $BEAM2 == 2 ]; then iB=2112;
 elif [ $BEAM2 == -2 ]; then iB=-2112; else echo "Unrecognized incoming beam 2";
 exit 1; fi
 # Check the previous!
@@ -366,9 +378,17 @@ Check:epTolErr = 0.001                ! Momentum-conservation tolerance
 ! 3) Beam-parameter settings.
 Beams:frameType = 4                ! LHE initialization
 Beams:LHEF = events.lhe            ! Input LHE file
+Beams:setProductionScalesFromLHEF=on ! Identify the Weak Jets
 
 ! 4) Switch on/off the key event-generation steps.
 EOF
+
+if [ $DELTA = "ON" ]
+then
+cat<<EOF >>$ifile
+Beams:setProductionScalesFromLHEF = on ! use separate scalup for each dipole
+EOF
+fi
 if [ $UsedPdfLib = "LHAPDF" ]
 then
  if [ $PY8VER == "8.1" ]
@@ -474,19 +494,16 @@ TimeShower:globalRecoil = on       ! All final-state particles recoil against th
 TimeShower:nMaxGlobalRecoil = 1    ! Number of splittings with TimeShower:globalRecoil = on
 TimeShower:globalRecoilMode = 2    ! Global recoil only for S events whose first emission is FSR
 TimeShower:nMaxGlobalBranch = 1    ! Number of FSR splittings proposed with global recoil
-TimeShower:nPartonsInBorn = -1      ! Number of Born QCD final-state partons (to treat H and S differently)
+TimeShower:nPartonsInBorn = -1     ! Number of Born QCD final-state partons (to treat H and S differently)
 TimeShower:limitPTmaxGlobal = on   ! Limits pT < min(SCALUP,mDipole/2).
+TimeShower:QEDshowerByQ = on       ! Photons from quarks
+TimeShower:QEDshowerByL = on       ! Photons from leptons
+TimeShower:QEDshowerByGamma = on   ! Photon ranchings
 
-TimeShower:QEDshowerByQ = off      ! Prevent quarks from radiating photons
-                                   ! ** USE on FOR REALISTIC SHOWER SIMULATION ** !!!
-TimeShower:QEDshowerByL = off      ! Prevent leptons from radiating photons
-                                   ! ** USE on FOR REALISTIC SHOWER SIMULATION ** !!!
-TimeShower:QEDshowerByGamma = off  ! Prevent photons from branching
-                                   ! ** USE on FOR REALISTIC SHOWER SIMULATION ** !!!
-
-TimeShower:MEcorrections = off     ! No Matrix-element corrections
 TimeShower:alphaSuseCMW = false    ! Use the CMW prescription in FSR
 TimeShower:weightGluonToQuark = 1  ! Use normal Altarelli-Parisi kernels for g -> q qbar
+TimeShower:pTminChgQ = 0.01
+TimeShower:pTminChgL = 0.00001
 
 ! 6) Initial-state shower.
 SpaceShower:pTmaxMatch = 1         ! Use scalup (re-check)
@@ -494,15 +511,12 @@ SpaceShower:pTmaxFudge = 1.        ! Factor changing the max scale
 SpaceShower:alphaSvalue = 0.118    ! Alpha_s(MZ) in final-state shower
 SpaceShower:alphaSorder = 1        ! Alpha_s running order in final-state shower
 SpaceShower:alphaEMorder = 0       ! Alpha_EM running order in final-state shower
-
-SpaceShower:QEDshowerByQ = off     ! Prevent quarks from radiating photons
-                                   ! ** USE on FOR REALISTIC SHOWER SIMULATION ** !!!
-SpaceShower:QEDshowerByL = off     ! Prevent leptons from radiating photons
-                                   ! ** USE on FOR REALISTIC SHOWER SIMULATION ** !!!
-
-SpaceShower:MEcorrections = off    ! No Matrix-element corrections
+SpaceShower:QEDshowerByQ = on      ! Photons from quarks
+SpaceShower:QEDshowerByL = on      ! Photons from leptons
 SpaceShower:rapidityorder = off    ! Do not order branchings in rapidity
 SpaceShower:alphaSuseCMW = false   ! Use the CMW prescription in ISR
+SpaceShower:pTminChgQ = 0.01
+SpaceShower:pTminChgL = 0.00001
 
 ! 7) Non-perturbative stuff.
 BeamRemnants:primordialKT = off    ! No primordial kT
@@ -553,8 +567,58 @@ JetMatching:setMad = off          ! Don't read from LHE in MG5LO format
 
 EOF
 fi
+
 cat <<EOF >> $ifile
-! 10) Decays.
+! 10) Matrix-element corrections.
+EOF
+
+if [ $space_shower_me_corrections = ".TRUE." ]
+then
+cat <<EOF >> $ifile
+SpaceShower:MEcorrections = on     ! MECs for ISR
+EOF
+else
+cat <<EOF >> $ifile
+SpaceShower:MEcorrections = off     ! no MECs for ISR
+EOF
+fi
+
+if [ $time_shower_me_corrections = ".TRUE." ]
+then
+cat <<EOF >> $ifile
+TimeShower:MEcorrections = on     ! MECs for FSR
+EOF
+else
+cat <<EOF >> $ifile
+TimeShower:MEcorrections = off     ! no MECs for FSR
+EOF
+fi
+
+if [ $time_shower_me_extended = ".TRUE." ]
+then
+cat <<EOF >> $ifile
+TimeShower:MEextended = on     ! Extended MECs for FSR
+EOF
+else
+cat <<EOF >> $ifile
+TimeShower:MEextended = off     ! no extended MECs for FSR
+EOF
+fi
+
+if [ $time_shower_me_after_first = ".TRUE." ]
+then
+cat <<EOF >> $ifile
+TimeShower:MEafterFirst = on     ! MECs after frst FSR
+EOF
+else
+cat <<EOF >> $ifile
+TimeShower:MEafterFirst = off     ! no MECS MECs after first FSR
+EOF
+fi
+
+
+cat <<EOF >> $ifile
+! 11) Decays.
 EOF
 
 if [ $PI_STABLE_PY8 = ".TRUE." ]

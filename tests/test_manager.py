@@ -28,13 +28,7 @@
 """
 
 from __future__ import absolute_import
-from __future__ import print_function
 import sys
-
-if not sys.version_info[0] in [2,3] or sys.version_info[1] < 6:
-    sys.exit('MadGraph5_aMC@NLO works only with python 2.6 or later (but not python 3.X).\n\
-               Please upgrate your version of python.')
-
 import inspect
 import tarfile
 import logging
@@ -43,6 +37,8 @@ import optparse
 import os
 import re
 import unittest
+if not hasattr(unittest, 'debug'):
+    unittest.debug = False
 import time
 import datetime
 import shutil
@@ -182,12 +178,13 @@ class MyTextTestRunner(unittest.TextTestRunner):
 # run
 #===============================================================================
 def run(expression='', re_opt=0, package='./tests/unit_tests', verbosity=1,
-        timelimit=[0,0]):
+        timelimit=[0,0], debug=False, options=None):
     """ running the test associated to expression. By default, this launch all 
     test inherited from TestCase. Expression can be the name of directory, 
     module, class, function or event standard regular expression (in re format)
     """
 
+    unittest.debug=debug
     #init a test suite
     testsuite = unittest.TestSuite()
     collect = unittest.TestLoader()
@@ -195,10 +192,11 @@ def run(expression='', re_opt=0, package='./tests/unit_tests', verbosity=1,
     TestSuiteModified.mintime_limit =  float(timelimit[0])
 
     for test_fct in TestFinder(package=package, expression=expression, \
-                                   re_opt=re_opt):
+                                   re_opt=re_opt, excluded=options.exclude):
         data = collect.loadTestsFromName(test_fct)        
         assert(isinstance(data,unittest.TestSuite))        
         data.__class__ = TestSuiteModified
+
         testsuite.addTest(data)
         
     output =  MyTextTestRunner(verbosity=verbosity).run(testsuite)
@@ -220,12 +218,13 @@ def run(expression='', re_opt=0, package='./tests/unit_tests', verbosity=1,
 # run
 #===============================================================================
 def run_border_search(to_crash='',expression='', re_opt=0, package='./tests/unit_tests', verbosity=1,
-        timelimit=[0,0]):
+        timelimit=[0,0],debug=False):
     """ running the test associated to expression one by one. and follow them by the to_crash one
         up to the time that to_crash is actually crashing. Then the run stops and print the list of the 
         routine tested. Then the code re-run itself(via a fork) to restrict the list. 
         The code stops when the list is of order 1. The order of the test is randomize at each level!
     """
+    unittest.debug = debug
     #init a test suite
     collect = unittest.TestLoader()
     TestSuiteModified.time_limit =  float(timelimit[1])
@@ -361,7 +360,7 @@ def runIOTests(arg=[''],update=True,force=0,synchronize=False):
     if update and path.isdir(_hc_comparison_files):
         if path.isdir(hc_comparison_files_BackUp):        
             shutil.rmtree(hc_comparison_files_BackUp)
-        shutil.copytree(_hc_comparison_files,hc_comparison_files_BackUp)
+        misc.copytree(_hc_comparison_files,hc_comparison_files_BackUp)
 
     IOTestManager.testFolders_filter = arg.split('/')[0].split('&')
     IOTestManager.testNames_filter = arg.split('/')[1].split('&')
@@ -498,7 +497,7 @@ def runIOTests(arg=[''],update=True,force=0,synchronize=False):
         else:
             if path.isdir(hc_comparison_files_BackUp):
                 shutil.rmtree(_hc_comparison_files)
-                shutil.copytree(hc_comparison_files_BackUp,_hc_comparison_files)
+                misc.copytree(hc_comparison_files_BackUp,_hc_comparison_files)
                 print(colored%(32,"INFO:: No modifications applied."))
             else:
                 print(colored%(31,
@@ -606,7 +605,8 @@ class TestFinder(list):
         """Error associated to the TestFinder class."""
         pass
 
-    def __init__(self, package='tests/', expression='', re_opt=0):
+    def __init__(self, package='tests/', expression='', re_opt=0,
+                 excluded=None):
         """ initialize global variable for the test """
 
         list.__init__(self)
@@ -617,6 +617,10 @@ class TestFinder(list):
             self.package += '/'
         self.restrict_to(expression, re_opt)
         self.launch_pos = ''
+        if excluded is None:
+             self.excluded = []
+        else:
+            self.excluded = excluded
 
     def _check_if_obj_build(self):
         """ Check if a collect is already done 
@@ -713,7 +717,7 @@ class TestFinder(list):
                        and (inspect.ismethod(getattr(class_, name)) or 
                            inspect.isfunction(getattr(class_, name)))]
         if not checking:
-            self += candidate
+            self += [name for name in candidate if not self.check_invalid(name)]
         else:
             self += [name for name in candidate if self.check_valid(name)]
 
@@ -747,12 +751,25 @@ class TestFinder(list):
         if not isinstance(name, six.string_types):
             raise self.TestFinderError('check valid take a string argument')
 
+        if self.check_invalid(name):
+            return False
+
         for specific_format in self.format_possibility(name):
             for expr in self.rule:
                 if expr.search(specific_format):
                     return True
         return False
 
+    def check_invalid(self, name):
+        """ check if the name correspond to the rule """
+
+        if not isinstance(name, six.string_types):
+            raise self.TestFinderError('check valid take a string argument')
+
+        if any(forbid in name for forbid in self.excluded):
+            return True
+        return False
+       
     @staticmethod
     def status_file(name):
         """ check if a name is a module/a python file and return the status """
@@ -964,7 +981,7 @@ https://cp3.irmp.ucl.ac.be/projects/madgraph/wiki/DevelopmentPage/CodeTesting
 
     usage = "usage: %prog [expression1]... [expressionN] [options] "
     parser = optparse.OptionParser(usage=usage)
-    parser.add_option("-v", "--verbose", default=1,
+    parser.add_option("-v", "--verbose", default=1, type="int",
                       help="defined the verbosity level [%default]")
     parser.add_option("-r", "--reopt", type="int", default=0,
                   help="regular expression tag [%default]")
@@ -972,8 +989,8 @@ https://cp3.irmp.ucl.ac.be/projects/madgraph/wiki/DevelopmentPage/CodeTesting
                   help="position to start the search (from root)  [%default]")
     parser.add_option("-l", "--logging", default='CRITICAL',
         help="logging level (DEBUG|INFO|WARNING|ERROR|CRITICAL) [%default]")
-    parser.add_option("-F", "--force", action="store_true", default=False,
-        help="Force the update, bypassing its monitoring by the user")
+    parser.add_option("-F", "--force", type=int, default=0,
+        help="Force the update, bypassing its monitoring by the user: [2 display full diff, 10 hard-core pass]")
     parser.add_option("-f", "--semiForce", action="store_true", default=False,
         help="Bypass monitoring of ref. file only if another ref. file with "+\
                                     "the same name has already been monitored.")
@@ -989,6 +1006,7 @@ https://cp3.irmp.ucl.ac.be/projects/madgraph/wiki/DevelopmentPage/CodeTesting
     parser.add_option("-s", "--synchronize", action="store_true", default=False,
           help="Replace the IOTestsComparison.tar.bz2 tarball with the "+\
                                       "content of the folder IOTestsComparison")
+    parser.add_option("-e", "--exclude", action="append", type=str)
     parser.add_option("-t", "--timed", default="Auto",
           help="limit the duration of each test. Negative number re-writes the information file.")    
     parser.add_option("-T", "--mintime", default="0",
@@ -1000,7 +1018,8 @@ https://cp3.irmp.ucl.ac.be/projects/madgraph/wiki/DevelopmentPage/CodeTesting
           help="Running time, below which no notification is raised. (-1 for no notification)")        
     parser.add_option("", "--nocaffeinate", action="store_false", default=True, dest='nosleep',
                   help='For mac user, forbids to use caffeinate when running with a script')
-    
+    parser.add_option("", "--debug", action="store_true", default=False, dest='debug',
+                  help='setting debug flag to keep output where relevant')    
     (options, args) = parser.parse_args()
 
     if options.IOTestsUpdate:
@@ -1089,18 +1108,22 @@ https://cp3.irmp.ucl.ac.be/projects/madgraph/wiki/DevelopmentPage/CodeTesting
         if not options.border_effect:
             #logging.basicConfig(level=vars(logging)[options.logging])
             output = run(args, re_opt=options.reopt, verbosity=options.verbose, \
-                package=options.path, timelimit=[options.mintime,options.timed])
+                package=options.path, timelimit=[options.mintime,options.timed], debug=options.debug,
+                options=options)
         else:
             output = run_border_search(options.border_effect, args, re_opt=options.reopt, verbosity=options.verbose, \
-                package=options.path, timelimit=[options.mintime,options.timed])
+                package=options.path, timelimit=[options.mintime,options.timed], debug=options.debug)
     else:
         if options.IOTests=='L':
             print("Listing all tests defined in the reference files ...")
             print('\n'.join("> %s/%s"%(colored%(34,test[0]),colored%(32,test[1]))
             for test in listIOTests(args) if IOTestManager.need(test[0],test[1])))
             exit()
-        if options.force:
-            force = 10
+        if options.force!=0:
+            if options.force not in [0,1,2,10]:
+                force = 10
+            else:
+                force = options.force
         elif options.semiForce:
             force = 1
         else:
@@ -1117,7 +1140,16 @@ https://cp3.irmp.ucl.ac.be/projects/madgraph/wiki/DevelopmentPage/CodeTesting
                                (output.failures, output.errors, output.skipped)))
             output = "run: %s, failed: %s error: %s, skipped: %s" % \
                                                  (run, failed, errored, skipped)
-        misc.apple_notify("tests finished", str(output))
+        else:
+            failed, errored, skipped = 0, 0 ,0
+        misc.system_notify("tests finished", str(output))
+        if failed or errored or skipped:
+            sys.exit(1)
+    elif isinstance(output, unittest.runner.TextTestResult):
+        failed, errored, skipped = list(map(len,
+                               (output.failures, output.errors, output.skipped)))
+        if failed or errored or skipped:
+            sys.exit(1)
 #some example
 #    run('iolibs')
 #    run('test_test_manager.py')

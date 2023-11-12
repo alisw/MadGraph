@@ -191,6 +191,7 @@ class TestCmdShell1(unittest.TestCase):
                     'notification_center':True,
                     'timeout': 60,
                     'ignore_six_quark_processes': False,
+                    'include_lepton_initiated_processes': False,
                     'OLP': 'MadLoop',
                     'crash_on_error': False,
                     'auto_update': 7,
@@ -204,8 +205,8 @@ class TestCmdShell1(unittest.TestCase):
                     'hepmc_path': './hepmc',
                     'hwpp_path': './herwigPP',
                     'thepeg_path': './thepeg',
-                    'amcfast': 'amcfast-config',
-                    'applgrid': 'applgrid-config',
+                    #'applgrid': 'applgrid-config',
+                    'pineappl': 'pineappl',
                     'cluster_size': 100,
                     'loop_color_flows': False,
                     'cluster_local_path': None,
@@ -214,7 +215,14 @@ class TestCmdShell1(unittest.TestCase):
                     'ninja': './HEPTools/lib',
                     'samurai': None,
                     'max_t_for_channel': 99,
-                    'zerowidth_tchannel': True
+                    'zerowidth_tchannel': True,
+                     'auto_convert_model': True,
+                     'nlo_mixed_expansion': True,
+                     'acknowledged_v3.1_syntax': False,
+                     'contur_path': './HEPTools/contur',
+                     'rivet_path': './HEPTools/rivet',
+                     'yoda_path':'./HEPTools/yoda',
+                      'eMELA': 'eMELA-config',
                     }
 
         self.assertEqual(config, expected)
@@ -236,7 +244,7 @@ class TestCmdShell2(unittest.TestCase,
                     test_file_writers.CheckFileCreate):
     """Test all command line related to MG_ME"""
 
-    debugging = False
+    debugging = True
     def setUp(self):
         
         self.cmd = Cmd.MasterCmd()
@@ -298,7 +306,8 @@ class TestCmdShell2(unittest.TestCase,
                                                     'SubProcesses',
                                                     'P0_epem_epem',
                                                     'get_color.f')))
-        self.assertFalse(os.path.exists(os.path.join(self.out_dir,
+        if misc.which('gs'):
+            self.assertFalse(os.path.exists(os.path.join(self.out_dir,
                                                     'SubProcesses',
                                                     'P0_epem_epem',
                                                     'matrix1.jpg')))
@@ -306,7 +315,8 @@ class TestCmdShell2(unittest.TestCase,
                                                     'madevent.tar.gz')))
         self.do('output %s -f' % self.out_dir)
         self.do('set group_subprocesses True')
-        self.assertTrue(os.path.exists(os.path.join(self.out_dir,
+        if misc.which('gs'):
+            self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                     'SubProcesses',
                                                     'P0_epem_epem',
                                                     'matrix1.jpg')))
@@ -502,11 +512,15 @@ class TestCmdShell2(unittest.TestCase,
         # Check that the output of check is correct 
         logfile = os.path.join(self.out_dir,'SubProcesses', 'P0_gg_ttx',
                                'check.log')
-        subprocess.call('./check', 
-                        stdout=open(logfile, 'w'), stderr=devnull,
+        p = subprocess.Popen('./check', 
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                         cwd=os.path.join(self.out_dir, 'SubProcesses',
                                          'P0_gg_ttx'), shell=True)
-        log_output = open(logfile, 'r').read()
+        (log_output, err) = p.communicate()
+        log_output = log_output.decode()
+
+        #log_output = open(logfile, 'r').read()
+        #misc.sprint(log_output)
         me_re = re.compile('Matrix element\s*=\s*(?P<value>[\d\.eE\+-]+)\s*GeV',
                            re.IGNORECASE)
         me_groups = me_re.search(log_output)
@@ -565,11 +579,12 @@ class TestCmdShell2(unittest.TestCase,
         # Check that the output of check is correct 
         logfile = os.path.join(self.out_dir,'SubProcesses', 'P0_epem_epem',
                                'check.log')
-        subprocess.call('./check', 
-                        stdout=open(logfile, 'w'), stderr=devnull,
+        p = subprocess.Popen('./check', 
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                         cwd=os.path.join(self.out_dir, 'SubProcesses',
                                          'P0_epem_epem'), shell=True)
-        log_output = open(logfile, 'r').read()
+        (log_output, err) = p.communicate()
+        log_output = log_output.decode()
         me_re = re.compile('Matrix element\s*=\s*(?P<value>[\d\.eE\+-]+)\s*GeV',
                            re.IGNORECASE)
         me_groups = me_re.search(log_output)
@@ -686,11 +701,12 @@ class TestCmdShell2(unittest.TestCase,
         # Check that the output of check is correct 
         logfile = os.path.join(self.out_dir,'SubProcesses', 'P0_gg_hgg',
                                'check.log')
-        subprocess.call('./check', 
-                        stdout=open(logfile, 'w'), stderr=subprocess.STDOUT,
+        p = subprocess.Popen('./check', 
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                         cwd=os.path.join(self.out_dir, 'SubProcesses',
                                          'P0_gg_hgg'), shell=True)
-        log_output = open(logfile, 'r').read()
+        (log_output, err) = p.communicate()                                         
+        log_output =log_output.decode()
         me_re = re.compile('Matrix element\s*=\s*(?P<value>[\d\.eE\+-]+)\s*GeV',
                            re.IGNORECASE)
         me_groups = me_re.search(log_output)
@@ -784,7 +800,7 @@ class TestCmdShell2(unittest.TestCase,
         ffv1p0 = """C     This File is Automatically generated by ALOHA 
 C     The process calculated in this file is: 
 C     Gamma(3,2,1)
-C     
+C    
       SUBROUTINE FFV1P0_3(F1, F2, COUP, M3, W3,V3)
       IMPLICIT NONE
       COMPLEX*16 CI
@@ -807,12 +823,12 @@ C
      $ * W3))
       V3(3)= DENOM*(-CI)*(F1(3)*F2(5)+F1(4)*F2(6)+F1(5)*F2(3)+F1(6)
      $ *F2(4))
-      V3(4)= DENOM*(-CI)*(F1(5)*F2(4)+F1(6)*F2(3)-F1(3)*F2(6)-F1(4)
-     $ *F2(5))
+      V3(4)= DENOM*(-CI)*(-F1(3)*F2(6)-F1(4)*F2(5)+F1(5)*F2(4)+F1(6)
+     $ *F2(3))
       V3(5)= DENOM*(-CI)*(-CI*(F1(3)*F2(6)+F1(6)*F2(3))+CI*(F1(4)*F2(5)
      $ +F1(5)*F2(4)))
-      V3(6)= DENOM*(-CI)*(F1(4)*F2(6)+F1(5)*F2(3)-F1(3)*F2(5)-F1(6)
-     $ *F2(4))
+      V3(6)= DENOM*(-CI)*(-F1(3)*F2(5)-F1(6)*F2(4)+F1(4)*F2(6)+F1(5)
+     $ *F2(3))
       END
 
 
@@ -820,12 +836,14 @@ C
         text = open(os.path.join(self.out_dir,'Source', 'DHELAS', 'FFV1P0_3.f')).read()
         
         self.assertFalse('OM3' in text)
+        ffv1p0 = [l.strip() for l in ffv1p0.strip().split('\n')]
+        text = [l.strip() for l in text.strip().split('\n')]
         self.assertEqual(ffv1p0, text)
         
         ffv2 = """C     This File is Automatically generated by ALOHA 
 C     The process calculated in this file is: 
 C     Gamma(3,2,-1)*ProjM(-1,1)
-C     
+C       
       SUBROUTINE FFV2_3(F1, F2, COUP, M3, W3,V3)
       IMPLICIT NONE
       COMPLEX*16 CI
@@ -836,7 +854,7 @@ C
       REAL*8 M3
       REAL*8 OM3
       REAL*8 P3(0:3)
-      COMPLEX*16 TMP1
+      COMPLEX*16 TMP2
       COMPLEX*16 V3(6)
       REAL*8 W3
       COMPLEX*16 DENOM
@@ -848,22 +866,22 @@ C
       P3(1) = -DBLE(V3(2))
       P3(2) = -DIMAG(V3(2))
       P3(3) = -DIMAG(V3(1))
-      TMP1 = (F1(3)*(F2(5)*(P3(0)+P3(3))+F2(6)*(P3(1)+CI*(P3(2))))
+      TMP2 = (F1(3)*(F2(5)*(P3(0)+P3(3))+F2(6)*(P3(1)+CI*(P3(2))))
      $ +F1(4)*(F2(5)*(P3(1)-CI*(P3(2)))+F2(6)*(P3(0)-P3(3))))
       DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI
      $ * W3))
-      V3(3)= DENOM*(-CI)*(F1(3)*F2(5)+F1(4)*F2(6)-P3(0)*OM3*TMP1)
-      V3(4)= DENOM*(-CI)*(-F1(3)*F2(6)-F1(4)*F2(5)-P3(1)*OM3*TMP1)
+      V3(3)= DENOM*(-CI)*(F1(3)*F2(5)+F1(4)*F2(6)-P3(0)*OM3*TMP2)
+      V3(4)= DENOM*(-CI)*(-F1(3)*F2(6)-F1(4)*F2(5)-P3(1)*OM3*TMP2)
       V3(5)= DENOM*(-CI)*(-CI*(F1(3)*F2(6))+CI*(F1(4)*F2(5))-P3(2)*OM3
-     $ *TMP1)
-      V3(6)= DENOM*(-CI)*(F1(4)*F2(6)-F1(3)*F2(5)-P3(3)*OM3*TMP1)
+     $ *TMP2)
+      V3(6)= DENOM*(-CI)*(-F1(3)*F2(5)-P3(3)*OM3*TMP2+F1(4)*F2(6))
       END
 
 
 C     This File is Automatically generated by ALOHA 
-C     The process calculated in this file is: 
+C     The process calculated in this file is:
 C     Gamma(3,2,-1)*ProjM(-1,1)
-C     
+C
       SUBROUTINE FFV2_4_3(F1, F2, COUP1, COUP2, M3, W3,V3)
       IMPLICIT NONE
       COMPLEX*16 CI
@@ -886,14 +904,14 @@ C
         V3(I) = V3(I) + VTMP(I)
       ENDDO
       END
-
+      
 
 """
         text = open(os.path.join(self.out_dir,'Source', 'DHELAS', 'FFV2_3.f')).read()
         self.assertTrue('OM3' in text)
-        self.assertEqual(ffv2.split('\n'), text.split('\n'))
-        self.assertEqual(ffv2, text)        
-        
+        ffv2 = [l.strip() for l in ffv2.strip().split('\n')]
+        text = [l.strip() for l in text.strip().split('\n')]
+        self.assertEqual(ffv2, text) 
         
         
         
@@ -948,6 +966,8 @@ C
                                                'lib', 'libpdf.a')))
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                'lib', 'libbias.a')))
+        
+        
         # Check that gensym compiles
         status = subprocess.call(['make', 'gensym'],
                                  stdout=devnull, 
@@ -1054,11 +1074,12 @@ C
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                     'SubProcesses',
                                                     'P2_gg_qq')))
-        self.assertTrue(os.path.exists(os.path.join(self.out_dir,
+        if misc.which('gs'):
+            self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                     'SubProcesses',
                                                     'P2_gg_qq',
                                                     'matrix11.jpg')))
-        self.assertTrue(os.path.exists(os.path.join(self.out_dir,
+            self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                     'HTML',
                                                     'card.jpg')))
         # Check that the run_config.inc file has been modified correctly
@@ -1130,7 +1151,7 @@ C
         proc.communicate('100 4 0.1 .false.\n'.encode())
         self.assertEqual(proc.returncode, 0)
         # Check that madevent compiles
-        status = subprocess.call(['make', 'madevent'],
+        status = subprocess.call(['make', 'madevent_forhel'],
                                  stdout=devnull, 
                                  cwd=os.path.join(self.out_dir, 'SubProcesses',
                                                   'P2_gg_qq'))
@@ -1138,7 +1159,7 @@ C
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                     'SubProcesses',
                                                     'P2_gg_qq',
-                                                    'madevent')))
+                                                    'madevent_forhel')))
         
     def test_madevent_subproc_group_symmetry(self):
         """Check that symmetry.f gives right output"""
@@ -1296,7 +1317,7 @@ P1_qq_wp_wp_lvl
         proc.communicate('100 4 0.1 .false.\n'.encode())
         self.assertEqual(proc.returncode, 0)
         # Check that madevent compiles
-        status = subprocess.call(['make', 'madevent'],
+        status = subprocess.call(['make', 'madevent_forhel'],
                                  stdout=devnull, 
                                  cwd=os.path.join(self.out_dir, 'SubProcesses',
                                                   'P2_qq_wpg_wp_lvl'))
@@ -1304,7 +1325,7 @@ P1_qq_wp_wp_lvl
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                     'SubProcesses',
                                                     'P2_qq_wpg_wp_lvl',
-                                                    'madevent')))
+                                                    'madevent_forhel')))
         
     def test_ungroup_decay(self):
         """Test group_subprocesses=False for decay process"""
